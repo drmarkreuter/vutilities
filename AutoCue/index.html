@@ -1,0 +1,697 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pro Auto-Cue Teleprompter</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        /* Modern scrollbar styling for control sidebars */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #111827;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #374151;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #4B5563;
+        }
+
+        /* Hardware Mirror Flip for Prompter Glass */
+        .mirror-text {
+            transform: scaleX(-1);
+        }
+
+        /* GPU Accelerated Transform Wrapper to prevent Firefox/Brave sub-pixel scroll bugs */
+        #prompter-text-wrapper {
+            will-change: transform;
+            transform: translateY(0px);
+            transition: transform 0s linear;
+        }
+
+        /* Reading cue overlay line across viewport */
+        .cue-line {
+            pointer-events: none;
+            position: absolute;
+            left: 0;
+            right: 0;
+            top: 30%;
+            height: 3rem;
+            transform: translateY(-50%);
+            border-top: 2px dashed rgba(220, 38, 38, 0.8);
+            border-bottom: 2px dashed rgba(220, 38, 38, 0.8);
+            background-color: rgba(220, 38, 38, 0.08);
+            z-index: 20;
+        }
+
+        .cue-badge {
+            position: absolute;
+            right: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 10px;
+            font-weight: 800;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            color: #dc2626;
+            background: #ffffff;
+            border: 1px solid #fca5a5;
+            padding: 2px 8px;
+            border-radius: 4px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+        }
+
+        /* Color Themes for Prompter Viewport */
+        .theme-bw {
+            background-color: #ffffff !important;
+            color: #000000 !important;
+        }
+        .theme-wb {
+            background-color: #000000 !important;
+            color: #ffffff !important;
+        }
+        .theme-yg {
+            background-color: #020617 !important;
+            color: #facc15 !important;
+        }
+    </style>
+</head>
+<body class="bg-black text-gray-100 font-sans min-h-screen flex flex-col antialiased selection:bg-red-500 selection:text-white">
+
+    <header class="border-b border-gray-800 bg-gray-950 px-4 py-3 sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto flex flex-wrap justify-between items-center gap-3">
+            <div class="flex items-center space-x-3">
+                <div class="w-9 h-9 rounded-lg bg-red-600 flex items-center justify-center text-white font-bold shadow-lg shadow-red-900/40">
+                    <i class="fa-solid fa-video text-lg"></i>
+                </div>
+                <div>
+                    <h1 class="font-extrabold text-lg tracking-tight text-white leading-tight">Universal Auto-Cue</h1>
+                    <p class="text-xs text-gray-400">Universal Teleprompter & Caption Studio</p>
+                </div>
+            </div>
+
+            <div class="flex items-center space-x-2">
+                <button id="btn-toggle-fullscreen" title="Fullscreen Mode" class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-200 transition flex items-center gap-2 border border-gray-700">
+                    <i class="fa-solid fa-expand"></i>
+                    <span>Fullscreen</span>
+                </button>
+                <button id="btn-open-captions" title="Download YouTube Captions (.srt/.vtt)" class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-red-600 hover:bg-red-500 text-white transition flex items-center gap-2 shadow-sm">
+                    <i class="fa-solid fa-closed-captioning"></i>
+                    <span>Export Captions</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+        <!-- Controls & Text Editor Side Panel -->
+        <section class="lg:col-span-5 flex flex-col gap-5">
+            
+            <!-- Script Upload & Paste Area -->
+            <div class="bg-gray-900 border border-gray-800 rounded-xl p-4 shadow-xl">
+                <div class="flex justify-between items-center mb-3">
+                    <label for="script-input" class="text-xs font-bold text-gray-300 uppercase tracking-wider flex items-center gap-2">
+                        <i class="fa-solid fa-file-lines text-red-500"></i> Script Content
+                    </label>
+                    <div class="flex items-center gap-2">
+                        <label class="cursor-pointer text-xs bg-gray-800 hover:bg-gray-700 text-gray-300 px-2.5 py-1 rounded border border-gray-700 transition flex items-center gap-1">
+                            <i class="fa-solid fa-upload text-xs"></i>
+                            <span>Upload .txt</span>
+                            <input type="file" id="file-upload" accept=".txt,.text,.md,.srt" class="hidden">
+                        </label>
+                        <button id="btn-clear-script" title="Clear Text" class="text-xs text-gray-400 hover:text-red-400 p-1">
+                            <i class="fa-solid fa-trash-can"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <textarea id="script-input" rows="7" class="w-full bg-gray-950 text-gray-100 rounded-lg p-3 text-sm border border-gray-800 focus:border-red-500 focus:ring-1 focus:ring-red-500 outline-none transition resize-y font-sans leading-relaxed" placeholder="Paste your script here or upload a .txt file..."></textarea>
+                
+                <div class="flex justify-between items-center mt-2 text-xs text-gray-400 px-1">
+                    <span id="word-count">0 words</span>
+                    <span id="est-time">Est. Read Time: 00:00</span>
+                </div>
+            </div>
+
+            <!-- Teleprompter Adjustments & Controls -->
+            <div class="bg-gray-900 border border-gray-800 rounded-xl p-4 shadow-xl flex flex-col gap-4">
+                <h2 class="text-xs font-bold text-gray-300 uppercase tracking-wider border-b border-gray-800 pb-2 flex items-center gap-2">
+                    <i class="fa-solid fa-sliders text-red-500"></i> Prompter Settings
+                </h2>
+
+                <!-- Speed Control -->
+                <div>
+                    <div class="flex justify-between items-center mb-1">
+                        <label for="speed-slider" class="text-xs font-medium text-gray-300">Scroll Speed</label>
+                        <span id="speed-val-label" class="text-xs font-bold text-red-400 bg-red-950/50 px-2 py-0.5 rounded border border-red-900/50">3 (Medium)</span>
+                    </div>
+                    <input type="range" id="speed-slider" min="1" max="10" value="3" step="1" class="w-full accent-red-500 cursor-pointer bg-gray-800 rounded-lg h-2">
+                    <div class="flex justify-between text-[10px] text-gray-500 mt-1">
+                        <span>Very Slow</span>
+                        <span>Slow</span>
+                        <span>Medium</span>
+                        <span>Fast</span>
+                        <span>Very Fast</span>
+                    </div>
+                </div>
+
+                <!-- Text Size Control -->
+                <div>
+                    <div class="flex justify-between items-center mb-1">
+                        <label for="size-slider" class="text-xs font-medium text-gray-300">Text Size</label>
+                        <span id="size-val-label" class="text-xs font-bold text-gray-300">42 px</span>
+                    </div>
+                    <input type="range" id="size-slider" min="20" max="96" value="42" step="2" class="w-full accent-red-500 cursor-pointer bg-gray-800 rounded-lg h-2">
+                </div>
+
+                <!-- Alignment & Visual Options -->
+                <div class="grid grid-cols-2 gap-3 pt-1">
+                    <!-- Text Align Buttons -->
+                    <div>
+                        <label class="text-xs font-medium text-gray-400 block mb-1.5">Text Alignment</label>
+                        <div class="flex bg-gray-950 p-1 rounded-lg border border-gray-800">
+                            <button data-align="left" class="btn-align flex-1 py-1 text-xs rounded hover:text-white text-gray-400 transition" title="Left Align">
+                                <i class="fa-solid fa-align-left"></i>
+                            </button>
+                            <button data-align="center" class="btn-align flex-1 py-1 text-xs rounded bg-gray-800 text-white font-bold transition" title="Center Align">
+                                <i class="fa-solid fa-align-center"></i>
+                            </button>
+                            <button data-align="right" class="btn-align flex-1 py-1 text-xs rounded hover:text-white text-gray-400 transition" title="Right Align">
+                                <i class="fa-solid fa-align-right"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Color Mode Selector -->
+                    <div>
+                        <label class="text-xs font-medium text-gray-400 block mb-1.5">Display Mode</label>
+                        <select id="theme-select" class="w-full bg-gray-950 text-xs text-gray-200 border border-gray-800 rounded-lg p-2 focus:outline-none focus:border-red-500">
+                            <option value="theme-bw">Black Text on White (Default)</option>
+                            <option value="theme-wb">White Text on Black</option>
+                            <option value="theme-yg">Yellow Text on Dark Blue</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Option Toggles -->
+                <div class="grid grid-cols-2 gap-2 pt-2 border-t border-gray-800">
+                    <!-- Mirror Mode Toggle -->
+                    <label class="flex items-center space-x-2 text-xs text-gray-300 cursor-pointer select-none">
+                        <input type="checkbox" id="chk-mirror" class="rounded bg-gray-950 border-gray-700 text-red-600 focus:ring-0 w-4 h-4 accent-red-600">
+                        <span>Mirror Text (Flip Horizontal)</span>
+                    </label>
+
+                    <!-- Cue Line Toggle -->
+                    <label class="flex items-center space-x-2 text-xs text-gray-300 cursor-pointer select-none">
+                        <input type="checkbox" id="chk-cue-line" checked class="rounded bg-gray-950 border-gray-700 text-red-600 focus:ring-0 w-4 h-4 accent-red-600">
+                        <span>Show Cue Overlay</span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Keyboard Hotkey Legend -->
+            <div class="bg-gray-950 border border-gray-800/80 rounded-xl p-3 text-xs text-gray-400 flex items-center justify-between">
+                <span class="font-medium text-gray-300"><i class="fa-solid fa-keyboard mr-1 text-gray-500"></i> Hotkeys:</span>
+                <div class="flex gap-2">
+                    <span class="bg-gray-900 border border-gray-800 px-1.5 py-0.5 rounded text-[11px]"><kbd class="text-white">Space</kbd> Start/Pause</span>
+                    <span class="bg-gray-900 border border-gray-800 px-1.5 py-0.5 rounded text-[11px]"><kbd class="text-white">Esc / R</kbd> Reset</span>
+                    <span class="bg-gray-900 border border-gray-800 px-1.5 py-0.5 rounded text-[11px]"><kbd class="text-white">↑ / ↓</kbd> Speed</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Auto-Cue Display Screen -->
+        <section class="lg:col-span-7 flex flex-col h-[600px] lg:h-auto min-h-[520px]">
+            <div class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden flex flex-col h-full shadow-2xl relative">
+                
+                <!-- Viewport Control Toolbar -->
+                <div class="bg-gray-950 border-b border-gray-800 px-4 py-2.5 flex items-center justify-between z-30">
+                    <div class="flex items-center gap-2">
+                        <span class="w-2.5 h-2.5 rounded-full bg-red-500" id="status-dot"></span>
+                        <span id="status-text" class="text-xs font-semibold uppercase tracking-wider text-gray-300">Stopped</span>
+                    </div>
+
+                    <!-- Main Action Buttons -->
+                    <div class="flex items-center gap-2">
+                        <button id="btn-play-pause" type="button" class="px-5 py-1.5 bg-red-600 hover:bg-red-500 text-white font-bold rounded-lg text-xs transition flex items-center gap-1.5 shadow-md shadow-red-900/30">
+                            <i class="fa-solid fa-play" id="play-icon"></i>
+                            <span id="play-text">START SCROLL</span>
+                        </button>
+                        <button id="btn-reset" type="button" title="Reset to Top (R)" class="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 font-semibold rounded-lg text-xs transition border border-gray-700 flex items-center gap-1">
+                            <i class="fa-solid fa-rotate-left"></i>
+                            <span>Reset</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Auto-cue Screen Viewport Container -->
+                <div id="prompter-viewport" class="theme-bw relative flex-1 overflow-hidden select-none transition-colors duration-200 cursor-grab active:cursor-grabbing">
+                    
+                    <!-- Cue Line Overlay -->
+                    <div id="cue-overlay" class="cue-line">
+                        <span class="cue-badge"><i class="fa-solid fa-circle text-[6px] mr-1"></i> Cue Line</span>
+                    </div>
+
+                    <!-- GPU Accelerated Scrollable Text Content Wrapper -->
+                    <div id="prompter-text-wrapper" class="absolute left-0 right-0 px-8 md:px-14 py-[25vh]">
+                        <div id="prompter-content" class="w-full text-center leading-relaxed font-semibold whitespace-pre-wrap break-words">
+Welcome to Universal Auto-Cue!
+
+Paste your YouTube script on the left panel or click "Upload .txt" to load a file.
+
+Click START SCROLL or press SPACEBAR to start reading. Use UP/DOWN arrow keys on your keyboard to adjust scroll speed dynamically while presenting.
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Scroll Progress Bar -->
+                <div class="w-full bg-gray-950 h-1.5 border-t border-gray-800">
+                    <div id="scroll-progress" class="bg-red-600 h-full w-0 transition-all duration-75"></div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- YouTube Caption Subtitle Modal -->
+    <div id="caption-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-gray-900 border border-gray-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl relative">
+            <button id="btn-close-modal" type="button" class="absolute top-4 right-4 text-gray-400 hover:text-white text-lg">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+            <h3 class="text-base font-bold text-white mb-1 flex items-center gap-2">
+                <i class="fa-solid fa-closed-captioning text-red-500"></i> YouTube Subtitle File Generator
+            </h3>
+            <p class="text-xs text-gray-400 mb-4">Converts your script text into timestamped caption files (.srt or .vtt) ready for YouTube video uploads.</p>
+            
+            <div class="space-y-4 mb-6">
+                <div>
+                    <label for="wpm-input" class="text-xs font-medium text-gray-300 block mb-1">Speaking Speed (Words Per Minute)</label>
+                    <input type="number" id="wpm-input" value="130" min="60" max="250" class="w-full bg-gray-950 text-white border border-gray-800 rounded-lg p-2.5 text-sm focus:border-red-500 outline-none">
+                    <span class="text-[11px] text-gray-500 mt-0.5 block">Standard presenter pace is ~130 - 150 WPM.</span>
+                </div>
+
+                <div>
+                    <label for="caption-format" class="text-xs font-medium text-gray-300 block mb-1">Caption Format</label>
+                    <select id="caption-format" class="w-full bg-gray-950 text-white border border-gray-800 rounded-lg p-2.5 text-sm focus:border-red-500 outline-none">
+                        <option value="srt">SubRip Subtitle (.srt) - YouTube Preferred</option>
+                        <option value="vtt">WebVTT (.vtt)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="flex justify-end gap-3">
+                <button id="btn-cancel-modal" type="button" class="px-4 py-2 text-xs font-semibold text-gray-300 hover:text-white bg-gray-800 hover:bg-gray-700 rounded-lg transition">Cancel</button>
+                <button id="btn-download-caption" type="button" class="px-4 py-2 text-xs font-semibold text-white bg-red-600 hover:bg-red-500 rounded-lg transition shadow-md flex items-center gap-2">
+                    <i class="fa-solid fa-download"></i> Download Captions
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // Element References
+            const scriptInput = document.getElementById('script-input');
+            const fileUpload = document.getElementById('file-upload');
+            const btnClearScript = document.getElementById('btn-clear-script');
+            const wordCountEl = document.getElementById('word-count');
+            const estTimeEl = document.getElementById('est-time');
+
+            const speedSlider = document.getElementById('speed-slider');
+            const speedValLabel = document.getElementById('speed-val-label');
+            const sizeSlider = document.getElementById('size-slider');
+            const sizeValLabel = document.getElementById('size-val-label');
+            const btnAligns = document.querySelectorAll('.btn-align');
+            const themeSelect = document.getElementById('theme-select');
+            const chkMirror = document.getElementById('chk-mirror');
+            const chkCueLine = document.getElementById('chk-cue-line');
+
+            const prompterViewport = document.getElementById('prompter-viewport');
+            const prompterWrapper = document.getElementById('prompter-text-wrapper');
+            const prompterContent = document.getElementById('prompter-content');
+            const cueOverlay = document.getElementById('cue-overlay');
+            const scrollProgress = document.getElementById('scroll-progress');
+
+            const btnPlayPause = document.getElementById('btn-play-pause');
+            const playIcon = document.getElementById('play-icon');
+            const playText = document.getElementById('play-text');
+            const btnReset = document.getElementById('btn-reset');
+            const statusDot = document.getElementById('status-dot');
+            const statusText = document.getElementById('status-text');
+            const btnToggleFullscreen = document.getElementById('btn-toggle-fullscreen');
+
+            const btnOpenCaptions = document.getElementById('btn-open-captions');
+            const captionModal = document.getElementById('caption-modal');
+            const btnCloseModal = document.getElementById('btn-close-modal');
+            const btnCancelModal = document.getElementById('btn-cancel-modal');
+            const btnDownloadCaption = document.getElementById('btn-download-caption');
+            const wpmInput = document.getElementById('wpm-input');
+            const captionFormat = document.getElementById('caption-format');
+
+            // Application Engine State
+            let isRunning = false;
+            let currentOffset = 0; // Floating point translation offset in pixels
+            let lastTimestamp = null;
+            let animationFrameId = null;
+
+            // Drag to manual scroll tracking
+            let isDragging = false;
+            let startY = 0;
+            let startOffset = 0;
+
+            const speedPresets = {
+                1: { speedPx: 25, label: '1 (Very Slow)' },
+                2: { speedPx: 45, label: '2 (Slow)' },
+                3: { speedPx: 75, label: '3 (Medium)' },
+                4: { speedPx: 120, label: '4 (Fast)' },
+                5: { speedPx: 180, label: '5 (Very Fast)' },
+                6: { speedPx: 250, label: '6 (Ultra)' },
+                7: { speedPx: 340, label: '7 (High)' },
+                8: { speedPx: 450, label: '8 (Turbo)' },
+                9: { speedPx: 580, label: '9 (Hyper)' },
+                10: { speedPx: 750, label: '10 (Max)' }
+            };
+
+            // Calculate Max Scroll Distance based on wrapper height vs container height
+            function getMaxScroll() {
+                const wrapperHeight = prompterWrapper.offsetHeight;
+                const viewportHeight = prompterViewport.offsetHeight;
+                return Math.max(0, wrapperHeight - (viewportHeight * 0.5));
+            }
+
+            function renderTransformPosition() {
+                prompterWrapper.style.transform = `translate3d(0, -${currentOffset}px, 0)`;
+                
+                const maxScroll = getMaxScroll();
+                const pct = maxScroll > 0 ? Math.min(100, Math.max(0, (currentOffset / maxScroll) * 100)) : 0;
+                scrollProgress.style.width = `${pct}%`;
+            }
+
+            function animationLoop(timestamp) {
+                if (!isRunning) return;
+
+                if (!lastTimestamp) {
+                    lastTimestamp = timestamp;
+                }
+
+                // High precision time delta calculation
+                const deltaSeconds = Math.min((timestamp - lastTimestamp) / 1000, 0.1);
+                lastTimestamp = timestamp;
+
+                const currentSpeed = speedPresets[speedSlider.value].speedPx;
+                currentOffset += currentSpeed * deltaSeconds;
+
+                const maxScroll = getMaxScroll();
+                if (currentOffset >= maxScroll) {
+                    currentOffset = maxScroll;
+                    renderTransformPosition();
+                    pauseScroll();
+                    return;
+                }
+
+                renderTransformPosition();
+                animationFrameId = requestAnimationFrame(animationLoop);
+            }
+
+            function startScroll() {
+                if (isRunning) return;
+                isRunning = true;
+                lastTimestamp = null;
+
+                playIcon.classList.remove('fa-play');
+                playIcon.classList.add('fa-pause');
+                playText.innerText = 'PAUSE';
+                btnPlayPause.classList.remove('bg-red-600', 'hover:bg-red-500');
+                btnPlayPause.classList.add('bg-amber-600', 'hover:bg-amber-500');
+
+                statusDot.classList.remove('bg-red-500');
+                statusDot.classList.add('bg-emerald-500', 'animate-pulse');
+                statusText.innerText = 'Scrolling';
+
+                animationFrameId = requestAnimationFrame(animationLoop);
+            }
+
+            function pauseScroll() {
+                isRunning = false;
+                if (animationFrameId) {
+                    cancelAnimationFrame(animationFrameId);
+                    animationFrameId = null;
+                }
+
+                playIcon.classList.remove('fa-pause');
+                playIcon.classList.add('fa-play');
+                playText.innerText = 'START SCROLL';
+                btnPlayPause.classList.remove('bg-amber-600', 'hover:bg-amber-500');
+                btnPlayPause.classList.add('bg-red-600', 'hover:bg-red-500');
+
+                statusDot.classList.remove('bg-emerald-500', 'animate-pulse');
+                statusDot.classList.add('bg-red-500');
+                statusText.innerText = 'Paused';
+            }
+
+            function toggleScroll() {
+                if (isRunning) {
+                    pauseScroll();
+                } else {
+                    startScroll();
+                }
+            }
+
+            function resetScroll() {
+                pauseScroll();
+                currentOffset = 0;
+                renderTransformPosition();
+            }
+
+            // Mouse Drag & Touch Gesture Manual Scroll Handlers
+            function handleDragStart(e) {
+                isDragging = true;
+                startY = e.touches ? e.touches[0].clientY : e.clientY;
+                startOffset = currentOffset;
+            }
+
+            function handleDragMove(e) {
+                if (!isDragging) return;
+                const currentY = e.touches ? e.touches[0].clientY : e.clientY;
+                const deltaY = startY - currentY;
+                const maxScroll = getMaxScroll();
+                
+                currentOffset = Math.min(maxScroll, Math.max(0, startOffset + deltaY));
+                renderTransformPosition();
+            }
+
+            function handleDragEnd() {
+                isDragging = false;
+            }
+
+            prompterViewport.addEventListener('mousedown', handleDragStart);
+            window.addEventListener('mousemove', handleDragMove);
+            window.addEventListener('mouseup', handleDragEnd);
+
+            prompterViewport.addEventListener('touchstart', handleDragStart, { passive: true });
+            window.addEventListener('touchmove', handleDragMove, { passive: true });
+            window.addEventListener('touchend', handleDragEnd);
+
+            // Wheel scroll support
+            prompterViewport.addEventListener('wheel', (e) => {
+                e.preventDefault();
+                const maxScroll = getMaxScroll();
+                currentOffset = Math.min(maxScroll, Math.max(0, currentOffset + e.deltaY));
+                renderTransformPosition();
+            }, { passive: false });
+
+            // Script updates
+            function updateScriptText() {
+                const text = scriptInput.value || 'Welcome to Universal Auto-Cue!\n\nPaste your script here or upload a file to begin.';
+                prompterContent.innerText = text;
+                
+                // Calculate word metrics
+                const words = text.trim() ? text.trim().split(/\s+/).length : 0;
+                wordCountEl.innerText = `${words.toLocaleString()} words`;
+                
+                const minutes = Math.floor(words / 130);
+                const seconds = Math.floor(((words / 130) - minutes) * 60);
+                estTimeEl.innerText = `Est. Read Time: ${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+                
+                resetScroll();
+            }
+
+            scriptInput.addEventListener('input', updateScriptText);
+
+            fileUpload.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    scriptInput.value = event.target.result;
+                    updateScriptText();
+                };
+                reader.readAsText(file);
+            });
+
+            btnClearScript.addEventListener('click', () => {
+                scriptInput.value = '';
+                updateScriptText();
+            });
+
+            // Settings Listener Attachments
+            speedSlider.addEventListener('input', (e) => {
+                speedValLabel.innerText = speedPresets[e.target.value].label;
+            });
+
+            sizeSlider.addEventListener('input', (e) => {
+                sizeValLabel.innerText = `${e.target.value} px`;
+                prompterContent.style.fontSize = `${e.target.value}px`;
+                renderTransformPosition();
+            });
+
+            btnAligns.forEach(btn => {
+                btn.addEventListener('click', () => {
+                    btnAligns.forEach(b => {
+                        b.classList.remove('bg-gray-800', 'text-white', 'font-bold');
+                        b.classList.add('text-gray-400');
+                    });
+                    btn.classList.add('bg-gray-800', 'text-white', 'font-bold');
+                    btn.classList.remove('text-gray-400');
+                    
+                    prompterContent.style.textAlign = btn.getAttribute('data-align');
+                });
+            });
+
+            themeSelect.addEventListener('change', (e) => {
+                prompterViewport.classList.remove('theme-bw', 'theme-wb', 'theme-yg');
+                prompterViewport.classList.add(e.target.value);
+            });
+
+            chkMirror.addEventListener('change', (e) => {
+                if (e.target.checked) {
+                    prompterContent.classList.add('mirror-text');
+                } else {
+                    prompterContent.classList.remove('mirror-text');
+                }
+            });
+
+            chkCueLine.addEventListener('change', (e) => {
+                cueOverlay.style.display = e.target.checked ? 'block' : 'none';
+            });
+
+            btnPlayPause.addEventListener('click', toggleScroll);
+            btnReset.addEventListener('click', resetScroll);
+
+            btnToggleFullscreen.addEventListener('click', () => {
+                if (!document.fullscreenElement) {
+                    document.documentElement.requestFullscreen().catch(() => {});
+                } else {
+                    if (document.exitFullscreen) {
+                        document.exitFullscreen();
+                    }
+                }
+            });
+
+            // Global Keybindings
+            window.addEventListener('keydown', (e) => {
+                if (['TEXTAREA', 'INPUT', 'SELECT'].includes(document.activeElement.tagName)) {
+                    return;
+                }
+
+                if (e.code === 'Space') {
+                    e.preventDefault();
+                    toggleScroll();
+                } else if (e.code === 'KeyR' || e.code === 'Escape') {
+                    e.preventDefault();
+                    resetScroll();
+                } else if (e.code === 'ArrowUp') {
+                    e.preventDefault();
+                    speedSlider.value = Math.min(10, parseInt(speedSlider.value) + 1);
+                    speedSlider.dispatchEvent(new Event('input'));
+                } else if (e.code === 'ArrowDown') {
+                    e.preventDefault();
+                    speedSlider.value = Math.max(1, parseInt(speedSlider.value) - 1);
+                    speedSlider.dispatchEvent(new Event('input'));
+                }
+            });
+
+            // Subtitle Generator Modal Controls
+            btnOpenCaptions.addEventListener('click', () => captionModal.classList.remove('hidden'));
+            btnCloseModal.addEventListener('click', () => captionModal.classList.add('hidden'));
+            btnCancelModal.addEventListener('click', () => captionModal.classList.add('hidden'));
+
+            function formatTimestamp(secondsTotal, isVTT = false) {
+                const hrs = Math.floor(secondsTotal / 3600);
+                const mins = Math.floor((secondsTotal % 3600) / 60);
+                const secs = Math.floor(secondsTotal % 60);
+                const millis = Math.floor((secondsTotal % 1) * 1000);
+                
+                const timeStr = `${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+                return isVTT 
+                    ? `${timeStr}.${String(millis).padStart(3, '0')}`
+                    : `${timeStr},${String(millis).padStart(3, '0')}`;
+            }
+
+            btnDownloadCaption.addEventListener('click', () => {
+                const text = scriptInput.value.trim();
+                if (!text) {
+                    alert('Please input or paste a script first.');
+                    return;
+                }
+
+                const wpm = parseInt(wpmInput.value) || 130;
+                const wordsPerSec = wpm / 60;
+                const isVTT = captionFormat.value === 'vtt';
+
+                const sentences = text.match(/[^.!?\n]+[.!?\n]+/g) || [text];
+                let currentTime = 0;
+                let captionList = [];
+
+                sentences.forEach((sentence, idx) => {
+                    const cleanStr = sentence.trim();
+                    if (!cleanStr) return;
+
+                    const wordCount = cleanStr.split(/\s+/).length;
+                    const duration = Math.max(1.8, wordCount / wordsPerSec);
+                    const startTime = currentTime;
+                    const endTime = currentTime + duration;
+
+                    captionList.push({
+                        index: idx + 1,
+                        start: startTime,
+                        end: endTime,
+                        text: cleanStr
+                    });
+
+                    currentTime = endTime + 0.2;
+                });
+
+                let fileContent = isVTT ? 'WEBVTT\n\n' : '';
+                captionList.forEach(item => {
+                    fileContent += `${item.index}\n`;
+                    fileContent += `${formatTimestamp(item.start, isVTT)} --> ${formatTimestamp(item.end, isVTT)}\n`;
+                    fileContent += `${item.text}\n\n`;
+                });
+
+                const blob = new Blob([fileContent], { type: 'text/plain;charset=utf-8' });
+                const downloadLink = document.createElement('a');
+                downloadLink.href = URL.createObjectURL(blob);
+                downloadLink.download = `youtube_captions.${captionFormat.value}`;
+                document.body.appendChild(downloadLink);
+                downloadLink.click();
+                document.body.removeChild(downloadLink);
+
+                captionModal.classList.add('hidden');
+            });
+
+            // Initial startup
+            updateScriptText();
+            prompterContent.style.fontSize = `${sizeSlider.value}px`;
+        });
+    </script>
+</body>
+</html>
