@@ -3,6 +3,9 @@
 This repo hosts a few useful little web utilities designed for vlogging. All utilities run as a single webpage, with one function.  
 
 ## Universal Auto-Cue
+
+[Universal Auto-Cue](https://autocue.mark-reuter.workers.dev/)
+
 This is an auto-cue 'scrolling text' app. Use it whenever you need to read a script, news report, weather, story, and whatever. It supports .txt file upload, and can generate YouTube captions from the script. The text size and scroll speed can be controlled
 ![AutoCue screenshot](./images/AutoCue_Firefox.png)
 
