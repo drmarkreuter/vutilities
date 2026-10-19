@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AV Sync Clapper - Precision Video & Audio Alignment</title>
+    <!-- Tailwind CSS for sleek UI styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            red: '#ff2a2a',
+                            dark: '#0a0a0a',
+                            panel: '#121212',
+                            border: '#282828'
+                        }
+                    },
+                    fontFamily: {
+                        mono: ['JetBrains Mono', 'Fira Code', 'Monaco', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Custom styles for high-precision visual flashes and clean dark mode aesthetics */
+        body {
+            background-color: #050505;
+            color: #ffffff;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        /* Fullscreen flash backdrop */
+        #flashOverlay {
+            transition: opacity 0.02s linear;
+            will-change: opacity, background-color;
+            pointer-events: none;
+        }
+
+        /* Pulsing indicator animation */
+        @keyframes pulseGlow {
+            0%, 100% { opacity: 0.2; transform: scale(0.98); }
+            50% { opacity: 0.8; transform: scale(1.02); }
+        }
+        
+        .pulse-active {
+            animation: pulseGlow 1.5s infinite ease-in-out;
+        }
+
+        /* Custom range slider styling */
+        input[type=range] {
+            accent-color: #ff2a2a;
+        }
+
+        /* Crisp text stroke for high visibility in full screen */
+        .text-shadow-glow {
+            text-shadow: 0 0 20px rgba(255, 42, 42, 0.6);
+        }
+
+        .border-glow {
+            box-shadow: 0 0 15px rgba(255, 42, 42, 0.25);
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col font-sans antialiased bg-black text-white overflow-x-hidden">
+
+    <!-- Flash Screen Overlay for Fullscreen Syncing -->
+    <div id="flashOverlay" class="fixed inset-0 z-50 opacity-0 flex flex-col items-center justify-center p-6 text-center">
+        <div id="flashTextContainer" class="hidden flex-col items-center">
+            <span id="flashBigText" class="text-8xl md:text-9xl font-black tracking-widest text-black uppercase drop-shadow-md">SYNC</span>
+            <span id="flashTimecode" class="text-3xl md:text-5xl font-mono font-bold text-black mt-4">00:00:00:00</span>
+        </div>
+    </div>
+
+    <!-- Header Section -->
+    <header class="border-b border-zinc-800 bg-zinc-950/80 backdrop-blur sticky top-0 z-30 px-4 py-3 flex items-center justify-between">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-red-600 animate-pulse"></div>
+            <h1 class="text-xl font-bold tracking-wider font-mono uppercase text-white">AV-SYNC <span class="text-red-500 font-normal text-xs px-2 py-0.5 rounded border border-red-500/30 bg-red-500/10">CLAPPER v1.0</span></h1>
+        </div>
+        
+        <div class="flex items-center space-x-3">
+            <!-- Audio Context Status Indicator -->
+            <button id="enableAudioBtn" class="px-3 py-1.5 text-xs font-mono rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 hover:bg-amber-500/30 transition flex items-center gap-2">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"></path></svg>
+                <span>Enable Audio Engine</span>
+            </button>
+            
+            <button id="fullscreenBtn" class="p-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg transition" title="Toggle Fullscreen (F)">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-5h-4m4 0v4m0-4l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"></path></svg>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Container -->
+    <main class="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+        <!-- Left Column: Primary Sync Controls & Flash Target (8 Cols) -->
+        <div class="lg:col-span-7 flex flex-col gap-6">
+
+            <!-- Primary Clapper Pad & Visual Cue Display -->
+            <div id="visualCueBox" class="relative bg-zinc-900/90 border-2 border-zinc-800 rounded-2xl p-8 flex flex-col items-center justify-center min-h-[320px] shadow-2xl transition-all duration-150 overflow-hidden group">
+                <!-- Status Badge -->
+                <div class="absolute top-4 left-4 flex items-center space-x-2 bg-black/60 px-3 py-1 rounded-full border border-zinc-800">
+                    <span id="statusIndicatorDot" class="w-2 h-2 rounded-full bg-emerald-500"></span>
+                    <span id="statusText" class="text-xs font-mono text-zinc-300">READY FOR SYNC</span>
+                </div>
+
+                <div class="absolute top-4 right-4 font-mono text-xs text-zinc-500">
+                    PRESS <kbd class="px-2 py-0.5 bg-zinc-800 text-zinc-300 rounded border border-zinc-700">SPACE</kbd>
+                </div>
+
+                <!-- Central Visual Target Light -->
+                <div id="targetLight" class="w-28 h-28 md:w-36 md:h-36 rounded-full border-4 border-zinc-700 bg-zinc-950 flex items-center justify-center transition-all duration-75 my-4 group-hover:border-zinc-500 shadow-inner">
+                    <div id="targetInner" class="w-16 h-16 md:w-20 md:h-20 rounded-full bg-red-900/30 border border-red-500/20 transition-all duration-75 flex items-center justify-center">
+                        <svg class="w-8 h-8 text-red-500/60" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8z"/></svg>
+                    </div>
+                </div>
+
+                <!-- High Precision Countdown overlay text inside box -->
+                <div id="countdownDisplay" class="text-6xl md:text-7xl font-black font-mono text-white tracking-widest my-2 hidden">
+                    3
+                </div>
+
+                <!-- Main Action Button -->
+                <button id="clapBtn" class="w-full max-w-md py-5 bg-red-600 hover:bg-red-500 active:bg-red-700 text-white font-mono font-bold text-xl md:text-2xl rounded-xl tracking-wider transition-all duration-100 transform active:scale-[0.98] shadow-lg shadow-red-600/20 border border-red-400/40 flex items-center justify-center gap-3">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                    <span>TRIGGER SYNC BEEP</span>
+                </button>
+
+                <p class="text-xs text-zinc-500 font-mono mt-3">High-precision Web Audio synthesis • Zero sample latency</p>
+            </div>
+
+            <!-- Precision Master Clock & Timecode Display -->
+            <div class="bg-zinc-900/80 border border-zinc-800 rounded-xl p-5 flex flex-col md:flex-row items-center justify-between gap-4">
+                <div class="flex flex-col">
+                    <span class="text-xs font-mono text-zinc-400 uppercase tracking-wider">Live Timecode Reference</span>
+                    <span id="timecodeDisplay" class="text-3xl md:text-4xl font-mono font-bold text-red-500 tracking-wider text-shadow-glow">00:00:00:00</span>
+                </div>
+                <div class="flex items-center gap-4 text-xs font-mono text-zinc-400 border-t md:border-t-0 md:border-l border-zinc-800 pt-3 md:pt-0 md:pl-6 w-full md:w-auto justify-between md:justify-start">
+                    <div class="flex flex-col">
+                        <span class="text-zinc-500">FPS Base</span>
+                        <select id="fpsSelect" class="bg-zinc-800 text-zinc-200 border border-zinc-700 rounded px-2 py-1 mt-1 font-mono focus:outline-none focus:border-red-500">
+                            <option value="24">24 FPS (Film)</option>
+                            <option value="25">25 FPS (PAL)</option>
+                            <option value="29.97">29.97 FPS (NTSC)</option>
+                            <option value="30" selected>30 FPS (Web/Vlog)</option>
+                            <option value="60">60 FPS (HD Gaming)</option>
+                        </select>
+                    </div>
+                    <div class="flex flex-col">
+                        <span class="text-zinc-500">System Time</span>
+                        <span id="systemTime" class="text-zinc-200 font-mono py-1">12:00:00.000</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Mode Selection & Quick Presets -->
+            <div class="bg-zinc-900/80 border border-zinc-800 rounded-xl p-5">
+                <h3 class="text-xs font-mono text-zinc-400 uppercase tracking-wider mb-3">Sync Trigger Mode</h3>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <button data-mode="single" class="mode-btn active p-3 rounded-lg border text-sm font-mono flex flex-col items-center justify-center gap-1 transition bg-red-600/20 border-red-500 text-white">
+                        <span class="font-bold">Single Pulse</span>
+                        <span class="text-[10px] text-zinc-400">1 Sharp Beep</span>
+                    </button>
+                    <button data-mode="double" class="mode-btn p-3 rounded-lg border text-sm font-mono flex flex-col items-center justify-center gap-1 transition bg-zinc-800/50 border-zinc-700 text-zinc-400 hover:text-white hover:bg-zinc-800">
+                        <span class="font-bold">Double Pulse</span>
+                        <span class="text-[10px] text-zinc-400">2 Rapid Beeps</span>
+                    </button>
+                    <button data-mode="countdown" class="mode-btn p-3 rounded-lg border text-sm font-mono flex flex-col items-center justify-center gap-1 transition bg-zinc-800/50 border-zinc-700 text-zinc-400 hover:text-white hover:bg-zinc-800">
+                        <span class="font-bold">3-2-1 Countdown</span>
+                        <span class="text-[10px] text-zinc-400">3 Pips + Sync Tone</span>
+                    </button>
+                    <button data-mode="burst" class="mode-btn p-3 rounded-lg border text-sm font-mono flex flex-col items-center justify-center gap-1 transition bg-zinc-800/50 border-zinc-700 text-zinc-400 hover:text-white hover:bg-zinc-800">
+                        <span class="font-bold">Triple Staccato</span>
+                        <span class="text-[10px] text-zinc-400">3 Fast Pulses</span>
+                    </button>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Right Column: Settings & Vlog Audio Routing Guide (5 Cols) -->
+        <div class="lg:col-span-5 flex flex-col gap-6">
+
+            <!-- Signal Customization Settings -->
+            <div class="bg-zinc-900/80 border border-zinc-800 rounded-xl p-5 flex flex-col gap-5">
+                <h2 class="text-sm font-mono font-bold text-white uppercase tracking-wider flex items-center gap-2 border-b border-zinc-800 pb-3">
+                    <svg class="w-4 h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"></path></svg>
+                    <span>Signal Parameters</span>
+                </h2>
+
+                <!-- Tone Frequency -->
+                <div>
+                    <div class="flex justify-between text-xs font-mono mb-1">
+                        <span class="text-zinc-400">Audio Pitch / Frequency</span>
+                        <span id="freqVal" class="text-red-400 font-bold">1000 Hz</span>
+                    </div>
+                    <input type="range" id="freqSlider" min="400" max="2500" step="50" value="1000" class="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer">
+                    <div class="flex justify-between text-[10px] text-zinc-600 font-mono mt-1">
+                        <span>400 Hz (Low)</span>
+                        <span>1000 Hz (Standard)</span>
+                        <span>2500 Hz (High)</span>
+                    </div>
+                </div>
+
+                <!-- Flash & Beep Duration -->
+                <div>
+                    <div class="flex justify-between text-xs font-mono mb-1">
+                        <span class="text-zinc-400">Pulse Duration</span>
+                        <span id="durationVal" class="text-red-400 font-bold">100 ms</span>
+                    </div>
+                    <input type="range" id="durationSlider" min="30" max="500" step="10" value="100" class="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer">
+                    <div class="flex justify-between text-[10px] text-zinc-600 font-mono mt-1">
+                        <span>30 ms (Ultra sharp)</span>
+                        <span>100 ms (Recommended)</span>
+                        <span>500 ms (Long)</span>
+                    </div>
+                </div>
+
+                <!-- Visual Cue Flash Color -->
+                <div>
+                    <span class="block text-xs font-mono text-zinc-400 mb-2">Visual Flash Color</span>
+                    <div class="grid grid-cols-3 gap-2">
+                        <button data-color="red" class="color-btn active py-2 rounded border text-xs font-mono bg-red-600/30 border-red-500 text-white font-bold flex items-center justify-center gap-2">
+                            <span class="w-2.5 h-2.5 rounded-full bg-red-500"></span> Red
+                        </button>
+                        <button data-color="white" class="color-btn py-2 rounded border text-xs font-mono bg-zinc-800/40 border-zinc-700 text-zinc-400 hover:text-white flex items-center justify-center gap-2">
+                            <span class="w-2.5 h-2.5 rounded-full bg-white"></span> White
+                        </button>
+                        <button data-color="yellow" class="color-btn py-2 rounded border text-xs font-mono bg-zinc-800/40 border-zinc-700 text-zinc-400 hover:text-white flex items-center justify-center gap-2">
+                            <span class="w-2.5 h-2.5 rounded-full bg-yellow-400"></span> Yellow
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Fullscreen Flash Toggle -->
+                <div class="flex items-center justify-between pt-2 border-t border-zinc-800/80">
+                    <div>
+                        <span class="text-xs font-mono text-zinc-300 font-bold block">Fullscreen Flash Mode</span>
+                        <span class="text-[11px] text-zinc-500 block">Flashes entire monitor for screen capture alignment</span>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="fullscreenFlashToggle" class="sr-only peer" checked>
+                        <div class="w-9 h-5 bg-zinc-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-red-600"></div>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Educational Diagram: Dual Laptop Vlog Setup Guide -->
+            <div class="bg-zinc-900/80 border border-zinc-800 rounded-xl p-5 flex flex-col gap-3">
+                <h3 class="text-xs font-mono text-zinc-400 uppercase tracking-wider flex items-center gap-2">
+                    <svg class="w-4 h-4 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    <span>Vlog Dual-Laptop Alignment Routing</span>
+                </h3>
+                
+                <!-- Setup Diagram -->
+                <div class="bg-black/60 rounded-lg p-3 border border-zinc-800/80 text-xs font-mono space-y-3">
+                    <div class="grid grid-cols-2 gap-2 text-[11px]">
+                        <div class="p-2 rounded bg-zinc-900 border border-zinc-800">
+                            <span class="text-red-400 font-bold block">LAPTOP 1</span>
+                            <span class="text-zinc-400 text-[10px]">Camera Video + Mic Audio Recorder</span>
+                        </div>
+                        <div class="p-2 rounded bg-zinc-900 border border-zinc-800">
+                            <span class="text-amber-400 font-bold block">LAPTOP 2 (This Screen)</span>
+                            <span class="text-zinc-400 text-[10px]">Screen Recording + Clapper App</span>
+                        </div>
+                    </div>
+
+                    <div class="text-[11px] text-zinc-400 leading-relaxed border-t border-zinc-800/60 pt-2">
+                        <strong class="text-zinc-200">How to sync during editing:</strong>
+                        <ol class="list-decimal list-inside space-y-1 mt-1 text-zinc-400">
+                            <li>Route Laptop 2 audio out into Laptop 1 mixer/interface.</li>
+                            <li>Press <kbd class="px-1 bg-zinc-800 text-zinc-300 rounded">SPACE</kbd> to trigger sync beep & flash on Laptop 2 screen.</li>
+                            <li>In NLE timeline (Premiere/DaVinci), align the <span class="text-white font-bold">waveform peak</span> from Laptop 1 audio with the <span class="text-white font-bold">screen flash frame</span> on Laptop 2 video.</li>
+                        </ol>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+    </main>
+
+    <!-- Footer Status Bar -->
+    <footer class="border-t border-zinc-800 bg-zinc-950 px-4 py-2 text-xs font-mono text-zinc-500 flex flex-wrap justify-between items-center gap-2">
+        <div class="flex items-center space-x-4">
+            <span>Audio Latency: <span id="latencyDisplay" class="text-zinc-300">-- ms</span></span>
+            <span>•</span>
+            <span>Shortcut: <kbd class="px-1.5 py-0.5 bg-zinc-800 text-zinc-300 rounded">SPACEBAR</kbd> or <kbd class="px-1.5 py-0.5 bg-zinc-800 text-zinc-300 rounded">C</kbd></span>
+        </div>
+        <div class="text-zinc-600">
+            Zero-latency Web Audio Synthesis
+        </div>
+    </footer>
+
+    <!-- Application Script Logic -->
+    <script>
+        // High-Precision Web Audio API & Visual Sync Engine
+        class AVSyncClapper {
+            constructor() {
+                // Audio Context Initialization
+                this.audioCtx = null;
+                this.selectedFreq = 1000;
+                this.selectedDuration = 100; // ms
+                this.flashColor = 'red';
+                this.triggerMode = 'single';
+                this.fullscreenFlashEnabled = true;
+                this.fps = 30;
+                this.isCountdownRunning = false;
+
+                // DOM Elements
+                this.clapBtn = document.getElementById('clapBtn');
+                this.flashOverlay = document.getElementById('flashOverlay');
+                this.flashBigText = document.getElementById('flashBigText');
+                this.flashTimecode = document.getElementById('flashTimecode');
+                this.flashTextContainer = document.getElementById('flashTextContainer');
+                this.targetLight = document.getElementById('targetLight');
+                this.targetInner = document.getElementById('targetInner');
+                this.timecodeDisplay = document.getElementById('timecodeDisplay');
+                this.systemTimeDisplay = document.getElementById('systemTime');
+                this.countdownDisplay = document.getElementById('countdownDisplay');
+                this.enableAudioBtn = document.getElementById('enableAudioBtn');
+                this.latencyDisplay = document.getElementById('latencyDisplay');
+                this.statusText = document.getElementById('statusText');
+                this.statusIndicatorDot = document.getElementById('statusIndicatorDot');
+
+                // Sliders & Controls
+                this.freqSlider = document.getElementById('freqSlider');
+                this.freqVal = document.getElementById('freqVal');
+                this.durationSlider = document.getElementById('durationSlider');
+                this.durationVal = document.getElementById('durationVal');
+                this.fpsSelect = document.getElementById('fpsSelect');
+                this.fullscreenFlashToggle = document.getElementById('fullscreenFlashToggle');
+
+                this.initAudioContext();
+                this.bindEvents();
+                this.startClock();
+            }
+
+            // Initialize or Resume Web Audio API Context
+            initAudioContext() {
+                const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+                if (AudioContextClass) {
+                    this.audioCtx = new AudioContextClass();
+                    this.updateLatencyInfo();
+                } else {
+                    alert('Web Audio API is not supported in this browser.');
+                }
+            }
+
+            ensureAudioReady() {
+                if (!this.audioCtx) {
+                    this.initAudioContext();
+                }
+                if (this.audioCtx && this.audioCtx.state === 'suspended') {
+                    this.audioCtx.resume().then(() => {
+                        this.updateAudioButtonUI(true);
+                    });
+                } else if (this.audioCtx && this.audioCtx.state === 'running') {
+                    this.updateAudioButtonUI(true);
+                }
+            }
+
+            updateAudioButtonUI(isReady) {
+                if (isReady) {
+                    this.enableAudioBtn.classList.remove('bg-amber-500/20', 'text-amber-300', 'border-amber-500/40');
+                    this.enableAudioBtn.classList.add('bg-emerald-500/20', 'text-emerald-300', 'border-emerald-500/40');
+                    this.enableAudioBtn.innerHTML = `
+                        <svg class="w-3.5 h-3.5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                        <span>Audio Engine Active</span>
+                    `;
+                }
+            }
+
+            updateLatencyInfo() {
+                if (this.audioCtx) {
+                    const latency = (this.audioCtx.baseLatency || 0) * 1000;
+                    this.latencyDisplay.textContent = latency > 0 ? `${latency.toFixed(1)} ms` : '< 5 ms';
+                }
+            }
+
+            // Bind Event Listeners
+            bindEvents() {
+                // User interaction triggers to un-suspend audio
+                const unlockAudio = () => {
+                    this.ensureAudioReady();
+                    document.removeEventListener('click', unlockAudio);
+                    document.removeEventListener('keydown', unlockAudio);
+                };
+                document.addEventListener('click', unlockAudio);
+                document.addEventListener('keydown', unlockAudio);
+
+                this.enableAudioBtn.addEventListener('click', () => this.ensureAudioReady());
+
+                // Trigger Sync Button
+                this.clapBtn.addEventListener('click', () => this.triggerSync());
+
+                // Keyboard Shortcuts
+                document.addEventListener('keydown', (e) => {
+                    if (e.code === 'Space' || e.key.toLowerCase() === 'c') {
+                        // Prevent scrolling on Space
+                        if (e.code === 'Space' && e.target.tagName !== 'INPUT' && e.target.tagName !== 'SELECT') {
+                            e.preventDefault();
+                        }
+                        if (!e.repeat) {
+                            this.triggerSync();
+                        }
+                    } else if (e.key.toLowerCase() === 'f') {
+                        this.toggleFullscreen();
+                    }
+                });
+
+                // Control Sliders
+                this.freqSlider.addEventListener('input', (e) => {
+                    this.selectedFreq = parseInt(e.target.value);
+                    this.freqVal.textContent = `${this.selectedFreq} Hz`;
+                });
+
+                this.durationSlider.addEventListener('input', (e) => {
+                    this.selectedDuration = parseInt(e.target.value);
+                    this.durationVal.textContent = `${this.selectedDuration} ms`;
+                });
+
+                this.fpsSelect.addEventListener('change', (e) => {
+                    this.fps = parseFloat(e.target.value);
+                });
+
+                this.fullscreenFlashToggle.addEventListener('change', (e) => {
+                    this.fullscreenFlashEnabled = e.target.checked;
+                });
+
+                // Mode Buttons
+                document.querySelectorAll('.mode-btn').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        document.querySelectorAll('.mode-btn').forEach(b => {
+                            b.classList.remove('bg-red-600/20', 'border-red-500', 'text-white', 'active');
+                            b.classList.add('bg-zinc-800/50', 'border-zinc-700', 'text-zinc-400');
+                        });
+                        const target = e.currentTarget;
+                        target.classList.remove('bg-zinc-800/50', 'border-zinc-700', 'text-zinc-400');
+                        target.classList.add('bg-red-600/20', 'border-red-500', 'text-white', 'active');
+                        this.triggerMode = target.getAttribute('data-mode');
+                    });
+                });
+
+                // Color Selection Buttons
+                document.querySelectorAll('.color-btn').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        document.querySelectorAll('.color-btn').forEach(b => {
+                            b.classList.remove('bg-red-600/30', 'border-red-500', 'text-white', 'font-bold');
+                            b.classList.add('bg-zinc-800/40', 'border-zinc-700', 'text-zinc-400');
+                        });
+                        const target = e.currentTarget;
+                        target.classList.remove('bg-zinc-800/40', 'border-zinc-700', 'text-zinc-400');
+                        target.classList.add('bg-red-600/30', 'border-red-500', 'text-white', 'font-bold');
+                        this.flashColor = target.getAttribute('data-color');
+                    });
+                });
+
+                // Fullscreen Button
+                document.getElementById('fullscreenBtn').addEventListener('click', () => this.toggleFullscreen());
+            }
+
+            toggleFullscreen() {
+                if (!document.fullscreenElement) {
+                    document.documentElement.requestFullscreen().catch(err => {
+                        console.error(`Error attempting to enable fullscreen: ${err.message}`);
+                    });
+                } else {
+                    if (document.exitFullscreen) {
+                        document.exitFullscreen();
+                    }
+                }
+            }
+
+            // High Precision Web Audio Beep Synthesis
+            playTone(freq, durationMs, startTime = null) {
+                if (!this.audioCtx) return;
+                
+                const now = startTime !== null ? startTime : this.audioCtx.currentTime;
+                const osc = this.audioCtx.createOscillator();
+                const gain = this.audioCtx.createGain();
+
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(freq, now);
+
+                // Attack & Decay Envelope to avoid clipping / pops
+                const attackTime = 0.002; // 2ms attack
+                const durationSec = durationMs / 1000;
+                
+                gain.gain.setValueAtTime(0, now);
+                gain.gain.linearRampToValueAtTime(1.0, now + attackTime);
+                gain.gain.setValueAtTime(1.0, now + durationSec - 0.005);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + durationSec);
+
+                osc.connect(gain);
+                gain.connect(this.audioCtx.destination);
+
+                osc.start(now);
+                osc.stop(now + durationSec);
+            }
+
+            // Execute Visual Flash (Frame Accurate via requestAnimationFrame)
+            executeVisualFlash(durationMs) {
+                const colorHexMap = {
+                    red: '#ff2a2a',
+                    white: '#ffffff',
+                    yellow: '#ffcc00'
+                };
+                const hexColor = colorHexMap[this.flashColor] || '#ff2a2a';
+
+                // Target Light Glow inside box
+                this.targetLight.style.backgroundColor = hexColor;
+                this.targetLight.style.borderColor = '#ffffff';
+                this.targetLight.style.boxShadow = `0 0 50px ${hexColor}`;
+                this.targetInner.style.backgroundColor = '#ffffff';
+
+                // Fullscreen Overlay Flash
+                if (this.fullscreenFlashEnabled) {
+                    this.flashOverlay.style.backgroundColor = hexColor;
+                    this.flashOverlay.style.opacity = '1';
+                    
+                    const currentTimecode = this.getFormattedTimecode();
+                    this.flashTimecode.textContent = currentTimecode;
+                    this.flashTextContainer.style.display = 'flex';
+                }
+
+                // Turn off flash after duration using exact timer
+                setTimeout(() => {
+                    requestAnimationFrame(() => {
+                        this.targetLight.style.backgroundColor = '#09090b';
+                        this.targetLight.style.borderColor = '#3f3f46';
+                        this.targetLight.style.boxShadow = 'none';
+                        this.targetInner.style.backgroundColor = 'rgba(127, 29, 29, 0.3)';
+
+                        this.flashOverlay.style.opacity = '0';
+                        this.flashTextContainer.style.display = 'none';
+                    });
+                }, durationMs);
+            }
+
+            // Main Trigger Dispatcher
+            triggerSync() {
+                this.ensureAudioReady();
+
+                if (this.isCountdownRunning) return; // Prevent double trigger during countdown
+
+                this.statusText.textContent = 'SYNC TRIGGERED';
+                this.statusIndicatorDot.className = 'w-2 h-2 rounded-full bg-red-500 animate-ping';
+
+                if (this.triggerMode === 'single') {
+                    this.playTone(this.selectedFreq, this.selectedDuration);
+                    this.executeVisualFlash(this.selectedDuration);
+                    this.resetStatusAfterDelay(this.selectedDuration + 300);
+                } 
+                else if (this.triggerMode === 'double') {
+                    // Two pulses separated by 80ms gap
+                    this.playTone(this.selectedFreq, this.selectedDuration);
+                    this.executeVisualFlash(this.selectedDuration);
+
+                    setTimeout(() => {
+                        this.playTone(this.selectedFreq, this.selectedDuration);
+                        this.executeVisualFlash(this.selectedDuration);
+                    }, this.selectedDuration + 80);
+
+                    this.resetStatusAfterDelay((this.selectedDuration * 2) + 400);
+                } 
+                else if (this.triggerMode === 'burst') {
+                    // Triple staccato pulses
+                    const gap = 60;
+                    for (let i = 0; i < 3; i++) {
+                        setTimeout(() => {
+                            this.playTone(this.selectedFreq, 50);
+                            this.executeVisualFlash(50);
+                        }, i * (50 + gap));
+                    }
+                    this.resetStatusAfterDelay(350);
+                }
+                else if (this.triggerMode === 'countdown') {
+                    this.runCountdownClapper();
+                }
+            }
+
+            // 3-2-1 Countdown Clapper Sequence
+            runCountdownClapper() {
+                this.isCountdownRunning = true;
+                this.countdownDisplay.classList.remove('hidden');
+                this.clapBtn.disabled = true;
+                this.clapBtn.classList.add('opacity-50', 'cursor-not-allowed');
+
+                let count = 3;
+                this.countdownDisplay.textContent = count;
+
+                // Play lower-pitch pre-beeps for 3, 2, 1
+                const countInterval = setInterval(() => {
+                    if (count > 1) {
+                        this.playTone(600, 70); // 600Hz warning pip
+                        this.pulseTargetLight('#3b82f6', 100); // Blue light warning
+                        count--;
+                        this.countdownDisplay.textContent = count;
+                    } else {
+                        clearInterval(countInterval);
+                        this.countdownDisplay.textContent = 'SYNC!';
+                        
+                        // Final Sync Burst
+                        setTimeout(() => {
+                            this.playTone(this.selectedFreq, this.selectedDuration + 50);
+                            this.executeVisualFlash(this.selectedDuration + 50);
+
+                            setTimeout(() => {
+                                this.countdownDisplay.classList.add('hidden');
+                                this.clapBtn.disabled = false;
+                                this.clapBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+                                this.isCountdownRunning = false;
+                                this.resetStatusAfterDelay(300);
+                            }, this.selectedDuration + 200);
+                        }, 600);
+                    }
+                }, 700);
+            }
+
+            pulseTargetLight(colorHex, duration) {
+                this.targetLight.style.borderColor = colorHex;
+                this.targetLight.style.boxShadow = `0 0 30px ${colorHex}`;
+                setTimeout(() => {
+                    this.targetLight.style.borderColor = '#3f3f46';
+                    this.targetLight.style.boxShadow = 'none';
+                }, duration);
+            }
+
+            resetStatusAfterDelay(delayMs) {
+                setTimeout(() => {
+                    this.statusText.textContent = 'READY FOR SYNC';
+                    this.statusIndicatorDot.className = 'w-2 h-2 rounded-full bg-emerald-500';
+                }, delayMs);
+            }
+
+            // High Precision Timecode Generator
+            startClock() {
+                const updateTime = () => {
+                    const now = new Date();
+                    
+                    // Standard System Clock Time
+                    const hrs = String(now.getHours()).padStart(2, '0');
+                    const mins = String(now.getMinutes()).padStart(2, '0');
+                    const secs = String(now.getSeconds()).padStart(2, '0');
+                    const ms = String(now.getMilliseconds()).padStart(3, '0');
+
+                    this.systemTimeDisplay.textContent = `${hrs}:${mins}:${secs}.${ms}`;
+
+                    // Video Timecode based on selected FPS
+                    const frame = Math.floor((now.getMilliseconds() / 1000) * this.fps);
+                    const formattedFrames = String(frame).padStart(2, '0');
+                    
+                    const timecodeStr = `${hrs}:${mins}:${secs}:${formattedFrames}`;
+                    this.timecodeDisplay.textContent = timecodeStr;
+
+                    requestAnimationFrame(updateTime);
+                };
+
+                requestAnimationFrame(updateTime);
+            }
+
+            getFormattedTimecode() {
+                const now = new Date();
+                const hrs = String(now.getHours()).padStart(2, '0');
+                const mins = String(now.getMinutes()).padStart(2, '0');
+                const secs = String(now.getSeconds()).padStart(2, '0');
+                const frame = Math.floor((now.getMilliseconds() / 1000) * this.fps);
+                const formattedFrames = String(frame).padStart(2, '0');
+                return `${hrs}:${mins}:${secs}:${formattedFrames}`;
+            }
+        }
+
+        // Initialize application when page loads
+        window.addEventListener('DOMContentLoaded', () => {
+            window.clapperApp = new AVSyncClapper();
+        });
+    </script>
+</body>
+</html>
